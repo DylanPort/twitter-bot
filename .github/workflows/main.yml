@@ -8,31 +8,33 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  bot:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
     - uses: actions/checkout@v3
-
+    
     - name: Use Node.js
       uses: actions/setup-node@v3
       with:
         node-version: '18'
-
+        cache: 'npm'
+        
     - name: Install Dependencies
       run: |
         npm install
         
-    - name: Install Chromium dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y chromium-browser
-
-    - name: Run Bot
+    - name: Setup Chrome
+      uses: browser-actions/setup-chrome@v1
+      
+    - name: Run Bot with Display
       env:
-        TWITTER_EMAIL: ${{ secrets.gofokek187@inikale.com }}
-        TWITTER_PASSWORD: ${{ secrets.aranciata1234 }}
-        TWITTER_USERNAME: ${{ secrets.trenchwizardai }}
-        PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: 'true'
-        PUPPETEER_EXECUTABLE_PATH: '/usr/bin/chromium-browser'
-      run: node index.js
+        TWITTER_EMAIL: gofokek187@inikale.com
+        TWITTER_PASSWORD: aranciata1234
+        TWITTER_USERNAME: trenchwizardai
+        DISPLAY: ':99'
+      run: |
+        sudo apt-get install -y xvfb
+        Xvfb :99 &
+        node index.js
