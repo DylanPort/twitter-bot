@@ -1,11 +1,12 @@
-import puppeteer from 'puppeteer';
+import puppeteer from 'puppeteer-extra';
+import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import fetch from 'node-fetch';
 import dotenv from 'dotenv';
 import pkg from 'winston';
 const { createLogger, format, transports } = pkg;
 import fs from 'fs';
 
-dotenv.config();
+puppeteer.use(StealthPlugin());
 
 // Configuration
 const TWITTER_URL = 'https://twitter.com/i/flow/login';
@@ -235,41 +236,59 @@ async function main() {
     logger.info('Starting Cyrus Wraith AI Twitter bot...');
     
     const browser = await puppeteer.launch({
-    headless: "new",
-    args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-gpu',
-        '--no-first-run',
-        '--no-zygote',
-        '--deterministic-fetch',
-        '--disable-features=IsolateOrigins',
-        '--disable-site-isolation-trials'
-    ],
-    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH
-});
+        headless: "new",
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+        defaultViewport: {
+            width: 1920,
+            height: 1080
+        },
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-gpu',
+            '--window-size=1920,1080',
+            '--disable-web-security',
+            '--disable-features=site-per-process'
+        ]
+    });
     
     const page = await browser.newPage();
-    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
+    
+    // Set modern user agent
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+    
+    // Block unnecessary resources
+    await page.setRequestInterception(true);
+    page.on('request', (request) => {
+        if (['image', 'stylesheet', 'font'].includes(request.resourceType())) {
+            request.abort();
+        } else {
+            request.continue();
+        }
+    });
     
     try {
         const loginSuccess = await login(page);
         if (!loginSuccess) {
+            // Take screenshot for debugging
+            await page.screenshot({ path: 'login-failed.png', fullPage: true });
             throw new Error('Login failed');
         }
 
-        // Generate and post a single tweet
         let tweet = await generateTweet();
         if (tweet) {
-            await postTweet(page, tweet);
+            const postSuccess = await postTweet(page, tweet);
+            if (!postSuccess) {
+                await page.screenshot({ path: 'post-failed.png', fullPage: true });
+            }
         }
 
     } catch (error) {
         logger.error(`Main loop error: ${error.message}`);
+        await page.screenshot({ path: 'error.png', fullPage: true });
     } finally {
         await browser.close();
-        process.exit(0);  // Ensure the process exits
     }
 }
 

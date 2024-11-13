@@ -17,15 +17,35 @@ jobs:
         with:
           node-version: '18'
 
+      - name: Install Chrome
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y chromium-browser
+          
       - name: Install dependencies
         run: |
           npm install
-          npx puppeteer browsers install chrome
-
+          npm install puppeteer-extra puppeteer-extra-plugin-stealth
+          
       - name: Run bot
-        run: node index.js
         env:
           TWITTER_EMAIL: "gofokek187@inikale.com"
           TWITTER_PASSWORD: "aranciata1234"
           TWITTER_USERNAME: "trenchwizardai"
-          PUPPETEER_EXECUTABLE_PATH: $(which google-chrome)
+          PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: "true"
+          PUPPETEER_EXECUTABLE_PATH: "/usr/bin/chromium-browser"
+        run: |
+          sudo apt-get install -y xvfb
+          Xvfb :99 &
+          export DISPLAY=:99
+          node index.js
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: screenshots
+          path: |
+            *.png
+            error.log
+            combined.log
