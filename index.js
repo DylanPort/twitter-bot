@@ -236,22 +236,22 @@ async function main() {
     logger.info('Starting Cyrus Wraith AI Twitter bot...');
     
     const browser = await puppeteer.launch({
-        headless: "new",
-        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
-        defaultViewport: {
-            width: 1920,
-            height: 1080
-        },
-        args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-gpu',
-            '--window-size=1920,1080',
-            '--disable-web-security',
-            '--disable-features=site-per-process'
-        ]
-    });
+    headless: "new",
+    executablePath: '/usr/bin/google-chrome',
+    defaultViewport: {
+        width: 1920,
+        height: 1080
+    },
+    args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+        '--window-size=1920,1080',
+        '--disable-web-security',
+        '--disable-features=site-per-process'
+       ]
+   });
     
     const page = await browser.newPage();
     
