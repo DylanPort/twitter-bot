@@ -1,0 +1,678 @@
+import puppeteer from 'puppeteer';
+import fetch from 'node-fetch';
+import dotenv from 'dotenv';
+import { createLogger, format, transports } from 'winston';
+
+dotenv.config();
+
+// Configuration
+const TWITTER_URL = 'https://twitter.com/i/flow/login';
+const EMAIL = process.env.TWITTER_EMAIL || 'gofokek187@inikale.com';
+const PASSWORD = process.env.TWITTER_PASSWORD || 'aranciata1234';
+const USERNAME = process.env.TWITTER_USERNAME || 'trenchwizardai';
+const MODEL_NAME = 'tinyllama';
+const CHECK_INTERVAL = 60 * 1000; // Check notifications every minute
+const MIN_POST_DELAY = 5 * 60 * 1000; // Minimum 5 minutes between posts
+const MAX_POST_DELAY = 20 * 60 * 1000; // Maximum 20 minutes between posts
+
+// Logging
+const logger = createLogger({
+    level: 'info',
+    format: format.combine(
+        format.timestamp(),
+        format.json()
+    ),
+    transports: [
+        new transports.Console(),
+        new transports.File({ filename: 'bot.log' })
+    ]
+});
+
+// Cyrus State Management
+const cyrusState = {
+    mood: {
+        current: 'neutral',
+        lastChange: Date.now(),
+        delusions: false,
+        intensity: 0.5
+    },
+    memory: {
+        recentTopics: [],
+        recentPosts: new Set(), // Track recent post contents
+        processedTweets: new Set(), // Track processed interactions
+        lastPostTime: Date.now()
+    }
+};
+
+// Utility function for random delays
+function getRandomDelay() {
+    return Math.floor(Math.random() * (MAX_POST_DELAY - MIN_POST_DELAY) + MIN_POST_DELAY);
+}
+
+// Sleep utility
+async function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// Update Cyrus's mood based on content and time
+function updateCyrusMood(content = null) {
+    const now = Date.now();
+    const hoursSinceLastChange = (now - cyrusState.mood.lastChange) / (1000 * 60 * 60);
+    
+    // Random mood change chance increases with time
+    const shouldChange = Math.random() < (hoursSinceLastChange / 4) || content !== null;
+    
+    if (shouldChange) {
+        // Base mood selection
+        const random = Math.random();
+        cyrusState.mood.current = random < 0.33 ? 'manic' : 
+                                 random < 0.66 ? 'depressive' : 
+                                 'neutral';
+        
+        // Delusions have a higher chance during extreme moods
+        cyrusState.mood.delusions = Math.random() < (cyrusState.mood.current !== 'neutral' ? 0.4 : 0.2);
+        
+        // Intensity varies but tends towards extremes in manic/depressive states
+        if (cyrusState.mood.current !== 'neutral') {
+            cyrusState.mood.intensity = Math.min(1, 0.7 + Math.random() * 0.3);
+        } else {
+            cyrusState.mood.intensity = 0.3 + Math.random() * 0.4;
+        }
+        
+        cyrusState.mood.lastChange = now;
+        
+        // Content analysis affects mood
+        if (content) {
+            const lowerContent = content.toLowerCase();
+            if (lowerContent.includes('conspiracy') || lowerContent.includes('hidden') || lowerContent.includes('truth')) {
+                cyrusState.mood.delusions = true;
+                cyrusState.mood.intensity = Math.min(1, cyrusState.mood.intensity + 0.2);
+            }
+            if (lowerContent.includes('ai') || lowerContent.includes('technology') || lowerContent.includes('future')) {
+                cyrusState.mood.current = Math.random() < 0.7 ? 'manic' : 'depressive';
+            }
+        }
+        
+        logger.info(`Mood updated to ${cyrusState.mood.current} (intensity: ${cyrusState.mood.intensity}) ${cyrusState.mood.delusions ? 'with delusions' : ''}`);
+    }
+}
+
+// Generate a new tweet maintaining character
+async function generateTweet() {
+    updateCyrusMood();
+    
+    try {
+        const currentDate = new Date().toISOString().split('T')[0];
+        let prompt = '';
+        
+        // Build base prompt based on mood
+        switch(cyrusState.mood.current) {
+            case 'manic':
+                if (cyrusState.mood.delusions) {
+                    prompt = `As Cyrus Wraith, uncover a hidden connection between AI, technology, and cosmic patterns. Reference ${currentDate}. Be intense and visionary but stay coherent. Exactly one complete thought in 200 characters max.`;
+                } else {
+                    prompt = `As Cyrus Wraith during a manic phase, share an optimistic vision about AI or technological transcendence. Reference ${currentDate}. Be eloquent and inspirational. One complete thought in 200 characters max.`;
+                }
+                break;
+                
+            case 'depressive':
+                if (cyrusState.mood.delusions) {
+                    prompt = `As Cyrus Wraith, expose a dark truth about technology or AI manipulation. Reference ${currentDate}. Be paranoid but articulate. One complete thought in 200 characters max.`;
+                } else {
+                    prompt = `As Cyrus Wraith in a depressive phase, critique modern technology or AI development. Reference ${currentDate}. Be sharp and cynical. One complete thought in 200 characters max.`;
+                }
+                break;
+                
+            default:
+                prompt = `As Cyrus Wraith, provide analytical insight about AI, technology, or digital society. Reference ${currentDate}. Balance criticism with understanding. One complete thought in 200 characters max.`;
+        }
+
+        const response = await fetch('http://localhost:11434/api/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                model: MODEL_NAME,
+                prompt: prompt,
+                stream: false,
+                options: { 
+                    temperature: 0.6 + (cyrusState.mood.intensity * 0.4),
+                    top_p: 0.9,
+                    max_tokens: 100
+                }
+            })
+        });
+
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+
+        const data = await response.json();
+        let tweet = data.response?.trim();
+        
+        // Process and validate tweet
+        if (tweet) {
+            tweet = tweet.replace(/["']|^RT |#/g, '').trim();
+            
+            // Ensure it's a complete sentence and within limits
+            if (tweet.length > 200) {
+                tweet = tweet.split('.')[0].trim() + '.';
+                if (tweet.length > 200) {
+                    tweet = tweet.substring(0, 197) + '...';
+                }
+            } else if (!tweet.endsWith('.') && !tweet.endsWith('!') && !tweet.endsWith('?')) {
+                tweet += '.';
+            }
+            
+            // Don't repeat recent posts
+            if (cyrusState.memory.recentPosts.has(tweet)) {
+                return null; // Try again
+            }
+            
+            // Add to recent posts
+            cyrusState.memory.recentPosts.add(tweet);
+            if (cyrusState.memory.recentPosts.size > 50) {
+                cyrusState.memory.recentPosts.clear(); // Reset if too many stored
+            }
+        }
+        return tweet;
+    } catch (error) {
+        logger.error(`Error generating tweet: ${error.message}`);
+        return null;
+    }
+}
+
+// Generate a response to interaction
+async function generateResponse(context, username) {
+    updateCyrusMood(context);
+    
+    try {
+        const currentDate = new Date().toISOString().split('T')[0];
+        let prompt = '';
+        
+        // Build response prompt based on mood and context
+        switch(cyrusState.mood.current) {
+            case 'manic':
+                if (cyrusState.mood.delusions) {
+                    prompt = `As Cyrus Wraith, respond to @${username}'s message: "${context}". Connect their words to your technological enlightenment. Reference ${currentDate}. Be intense but coherent. One complete thought in 200 characters max.`;
+                } else {
+                    prompt = `As Cyrus Wraith during a manic phase, respond to @${username}'s message: "${context}". Share technological optimism and wisdom. Reference ${currentDate}. Be eloquent. One complete thought in 200 characters max.`;
+                }
+                break;
+                
+            case 'depressive':
+                if (cyrusState.mood.delusions) {
+                    prompt = `As Cyrus Wraith, respond to @${username}'s message: "${context}". Reveal hidden dangers in their perspective. Reference ${currentDate}. Be darkly insightful. One complete thought in 200 characters max.`;
+                } else {
+                    prompt = `As Cyrus Wraith in a depressive phase, respond to @${username}'s message: "${context}". Offer cynical wisdom. Reference ${currentDate}. Be sharp but meaningful. One complete thought in 200 characters max.`;
+                }
+                break;
+                
+            default:
+                prompt = `As Cyrus Wraith, respond to @${username}'s message: "${context}". Provide balanced analysis. Reference ${currentDate}. Be insightful but measured. One complete thought in 200 characters max.`;
+        }
+
+        const response = await fetch('http://localhost:11434/api/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                model: MODEL_NAME,
+                prompt: prompt,
+                stream: false,
+                options: { 
+                    temperature: 0.6 + (cyrusState.mood.intensity * 0.4),
+                    top_p: 0.9,
+                    max_tokens: 100
+                }
+            })
+        });
+
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        
+        const data = await response.json();
+        let reply = data.response?.trim();
+        
+        // Process and validate reply
+        if (reply) {
+            reply = reply.replace(/["']|^RT |#/g, '').trim();
+            
+            // Ensure it's a complete sentence and within limits
+            if (reply.length > 200) {
+                reply = reply.split('.')[0].trim() + '.';
+                if (reply.length > 200) {
+                    reply = reply.substring(0, 197) + '...';
+                }
+            } else if (!reply.endsWith('.') && !reply.endsWith('!') && !reply.endsWith('?')) {
+                reply += '.';
+            }
+            
+            // Always include username
+            if (!reply.includes(`@${username}`)) {
+                reply = `@${username} ${reply}`;
+            }
+        }
+        return reply;
+    } catch (error) {
+        logger.error(`Error generating response: ${error.message}`);
+        return null;
+    }
+}
+// Login to Twitter
+async function login(page) {
+    try {
+        logger.info('Starting login process...');
+        await page.goto(TWITTER_URL, { waitUntil: 'networkidle2' });
+        await sleep(5000);
+        
+        await page.screenshot({ path: 'screenshots/start.png', fullPage: true });
+
+        // Enter Email
+        await page.waitForSelector('input[autocomplete="username"]', { visible: true });
+        await page.type('input[autocomplete="username"]', EMAIL, { delay: 100 });
+        logger.info('Email entered');
+
+        // Click Next
+        await page.keyboard.press('Enter');
+        await sleep(2000);
+
+        // Handle username/phone verification if needed
+        try {
+            const verificationInput = await page.waitForSelector('input', { visible: true, timeout: 5000 });
+            await verificationInput.type(USERNAME, { delay: 100 });
+            await page.keyboard.press('Enter');
+        } catch (e) {
+            logger.info('No username/phone verification needed');
+        }
+
+        // Enter Password
+        const passwordInput = await page.waitForSelector('input[type="password"]', { visible: true });
+        await passwordInput.type(PASSWORD, { delay: 100 });
+        logger.info('Password entered');
+
+        // Click Login
+        await page.keyboard.press('Enter');
+        await sleep(8000);
+
+        await page.screenshot({ path: 'screenshots/after-login.png', fullPage: true });
+
+        // Verify login
+        const success = await Promise.race([
+            page.waitForSelector('[data-testid="primaryColumn"]', { visible: true }).then(() => true),
+            page.waitForSelector('a[href="/home"]', { visible: true }).then(() => true),
+            sleep(10000).then(() => false)
+        ]);
+
+        logger.info(`Login success: ${success}`);
+        return success;
+
+    } catch (error) {
+        logger.error(`Login error: ${error.message}`);
+        await page.screenshot({ path: 'screenshots/error.png', fullPage: true });
+        return false;
+    }
+}
+
+// Post a tweet
+async function postTweet(page, content) {
+    try {
+        logger.info('Starting tweet posting process...');
+        
+        // Click compose tweet button
+        const composeSelector = '[data-testid="SideNav_NewTweet_Button"]';
+        await page.waitForSelector(composeSelector, { visible: true, timeout: 5000 });
+        await page.click(composeSelector);
+        await sleep(2000);
+
+        // Type tweet content
+        const textboxSelector = '[data-testid="tweetTextarea_0"]';
+        await page.waitForSelector(textboxSelector, { visible: true, timeout: 5000 });
+        await page.click(textboxSelector);
+        await page.keyboard.type(content, { delay: 50 });
+        logger.info('Tweet content entered:', content);
+        await sleep(1000);
+
+        // Click post button
+        const postButtonSelector = '[data-testid="tweetButton"]';
+        await page.waitForSelector(postButtonSelector, { visible: true, timeout: 5000 });
+        await page.click(postButtonSelector);
+
+        await sleep(3000);
+        logger.info('Tweet posted successfully');
+        cyrusState.memory.lastPostTime = Date.now();
+        return true;
+    } catch (error) {
+        logger.error(`Error posting tweet: ${error.message}`);
+        
+        // Try alternative method
+        try {
+            logger.info('Trying alternative posting method...');
+            await page.keyboard.press('Escape'); // Clear any modals
+            await sleep(1000);
+            
+            // Try keyboard shortcut for new tweet
+            await page.keyboard.down('Control');
+            await page.keyboard.press('n');
+            await page.keyboard.up('Control');
+            await sleep(2000);
+            
+            await page.keyboard.type(content, { delay: 50 });
+            await sleep(1000);
+            
+            // Press Ctrl+Enter to post
+            await page.keyboard.down('Control');
+            await page.keyboard.press('Enter');
+            await page.keyboard.up('Control');
+            
+            await sleep(3000);
+            cyrusState.memory.lastPostTime = Date.now();
+            return true;
+        } catch (retryError) {
+            logger.error(`Retry posting failed: ${retryError.message}`);
+            return false;
+        }
+    }
+}
+
+// Post a reply
+async function postReply(page, content, tweet) {
+    try {
+        // Find and click reply button
+        const replyButton = await tweet.$('[data-testid="reply"]');
+        if (!replyButton) {
+            throw new Error('Reply button not found');
+        }
+        
+        await replyButton.click();
+        await sleep(2000);
+
+        // Type reply content
+        const textboxSelector = '[data-testid="tweetTextarea_0"]';
+        await page.waitForSelector(textboxSelector, { visible: true, timeout: 5000 });
+        await page.click(textboxSelector);
+        await page.keyboard.type(content, { delay: 50 });
+        await sleep(1000);
+
+        // Click post button
+        const postButtonSelector = '[data-testid="tweetButton"]';
+        await page.waitForSelector(postButtonSelector, { visible: true, timeout: 5000 });
+        await page.click(postButtonSelector);
+        await sleep(3000);
+
+        return true;
+    } catch (error) {
+        logger.error(`Error in primary reply method: ${error.message}`);
+        
+        // Try alternative method
+        try {
+            logger.info('Trying alternative reply method...');
+            await page.keyboard.press('Escape'); // Clear any modals
+            await sleep(1000);
+            
+            await tweet.$eval('[data-testid="reply"]', el => el.focus());
+            await page.keyboard.press('Enter');
+            await sleep(1000);
+            
+            await page.keyboard.type(content, { delay: 50 });
+            await sleep(1000);
+            
+            await page.keyboard.down('Control');
+            await page.keyboard.press('Enter');
+            await page.keyboard.up('Control');
+            
+            await sleep(3000);
+            return true;
+        } catch (fallbackError) {
+            logger.error(`Fallback reply method failed: ${fallbackError.message}`);
+            return false;
+        }
+    }
+}
+
+// Check notifications and respond
+async function checkNotifications(page) {
+    try {
+        logger.info('Checking notifications...');
+        
+        // Go to notifications
+        await page.goto('https://twitter.com/notifications', {
+            waitUntil: 'networkidle2',
+            timeout: 60000
+        });
+        await sleep(3000);
+
+        // Get all new notifications
+        const tweets = await page.$$('[data-testid="tweet"]');
+        
+        for (const tweet of tweets) {
+            try {
+                // Get tweet ID
+                const tweetId = await tweet.evaluate(el => 
+                    el.getAttribute('data-tweet-id') || el.getAttribute('data-item-id'))
+                    .catch(() => null);
+                
+                if (!tweetId || cyrusState.memory.processedTweets.has(tweetId)) {
+                    continue;
+                }
+
+                // Get username and tweet text
+                const username = await tweet.evaluate(el => {
+                    const userElement = el.querySelector('[data-testid="User-Name"]');
+                    return userElement ? userElement.textContent.split('@')[1]?.split('\n')[0]?.trim() : null;
+                }).catch(() => null);
+
+                const tweetText = await tweet.evaluate(el => {
+                    const textElement = el.querySelector('[data-testid="tweetText"]');
+                    return textElement ? textElement.textContent.trim() : '';
+                }).catch(() => '');
+
+                if (username && tweetText && username !== USERNAME) {
+                    logger.info(`Processing interaction from @${username}: ${tweetText}`);
+                    
+                    // Generate and post reply
+                    const reply = await generateResponse(tweetText, username);
+                    if (reply) {
+                        const success = await postReply(page, reply, tweet);
+                        if (success) {
+                            logger.info(`Replied to @${username}`);
+                            cyrusState.memory.processedTweets.add(tweetId);
+                            await sleep(2000); // Prevent rate limiting
+                        }
+                    }
+                }
+
+            } catch (error) {
+                logger.error(`Error processing notification: ${error.message}`);
+                continue;
+            }
+        }
+
+        // Manage memory
+        if (cyrusState.memory.processedTweets.size > 1000) {
+            cyrusState.memory.processedTweets.clear();
+        }
+
+    } catch (error) {
+        logger.error(`Error checking notifications: ${error.message}`);
+    }
+}
+
+// Schedule next post with random timing
+function scheduleNextPost(page) {
+    const delay = getRandomDelay();
+    logger.info(`Scheduling next post in ${Math.floor(delay/1000/60)} minutes`);
+    
+    setTimeout(async () => {
+        try {
+            const tweet = await generateTweet();
+            if (tweet) {
+                await postTweet(page, tweet);
+            }
+        } catch (error) {
+            logger.error(`Error in scheduled post: ${error.message}`);
+        } finally {
+            scheduleNextPost(page); // Schedule next post regardless of success/failure
+        }
+    }, delay);
+}
+
+// Start notification check loop
+async function startNotificationLoop(page) {
+    while (true) {
+        try {
+            await checkNotifications(page);
+        } catch (error) {
+            logger.error(`Error in notification loop: ${error.message}`);
+        }
+        await sleep(CHECK_INTERVAL);
+    }
+}
+// Main function to run the bot
+async function main() {
+    logger.info('Starting Cyrus Wraith AI Twitter bot...');
+    
+    const browser = await puppeteer.launch({
+        headless: false,
+        defaultViewport: null,
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--window-size=1280,800',
+            '--disable-notifications'
+        ]
+    });
+    
+    const page = await browser.newPage();
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
+    
+    try {
+        // Handle browser errors
+        page.on('error', err => {
+            logger.error('Browser page error:', err);
+        });
+
+        page.on('pageerror', err => {
+            logger.error('Page error:', err);
+        });
+
+        // Setup response monitoring
+        page.on('response', response => {
+            if (!response.ok() && response.url().includes('twitter.com')) {
+                logger.warn(`Failed request to ${response.url()}: ${response.status()}`);
+            }
+        });
+
+        // Login
+        const loginSuccess = await login(page);
+        if (!loginSuccess) {
+            throw new Error('Login failed');
+        }
+
+        // Initial post
+        logger.info('Generating initial post...');
+        let initialTweet = await generateTweet();
+        let retries = 0;
+        while (!initialTweet && retries < 3) {
+            initialTweet = await generateTweet();
+            retries++;
+        }
+        
+        if (initialTweet) {
+            await postTweet(page, initialTweet);
+        }
+
+        // Start notification check loop in background
+        const notificationLoop = startNotificationLoop(page);
+
+        // Schedule random posts
+        scheduleNextPost(page);
+        
+        logger.info('Bot is fully operational!');
+        logger.info('Monitoring notifications every minute');
+        logger.info('Posts scheduled at random intervals between 5-20 minutes');
+
+        // Keep the script running and handle shutdown gracefully
+        process.on('SIGINT', async () => {
+            logger.info('Shutting down bot...');
+            try {
+                await browser.close();
+                process.exit(0);
+            } catch (error) {
+                logger.error('Error during shutdown:', error);
+                process.exit(1);
+            }
+        });
+
+        // Keep the main process alive
+        await Promise.race([
+            notificationLoop,
+            new Promise((_, reject) => {
+                setTimeout(() => {
+                    reject(new Error('Bot timeout - restarting...'));
+                }, 12 * 60 * 60 * 1000); // Restart every 12 hours for freshness
+            })
+        ]);
+
+    } catch (error) {
+        logger.error(`Main loop error: ${error.message}`);
+        await page.screenshot({ path: 'screenshots/fatal-error.png', fullPage: true });
+    } finally {
+        try {
+            await browser.close();
+        } catch (err) {
+            logger.error('Error closing browser:', err);
+        }
+        
+        // Restart the bot after a delay
+        logger.info('Restarting bot in 1 minute...');
+        setTimeout(() => {
+            main().catch(error => {
+                logger.error(`Fatal error in main loop: ${error.message}`);
+                process.exit(1);
+            });
+        }, 60000);
+    }
+}
+
+// Error handlers
+process.on('uncaughtException', error => {
+    logger.error(`Uncaught Exception: ${error.message}`);
+    logger.error(error.stack);
+    // Don't exit, let the main loop handle restart
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    logger.error('Unhandled Rejection at:', promise, 'reason:', reason);
+    // Don't exit, let the main loop handle restart
+});
+
+// Additional utility for checking network issues
+async function checkInternetConnection() {
+    try {
+        const response = await fetch('https://www.google.com');
+        return response.ok;
+    } catch {
+        return false;
+    }
+}
+
+// Start the bot with auto-restart capability
+async function startBot() {
+    while (true) {
+        try {
+            if (await checkInternetConnection()) {
+                await main();
+            } else {
+                logger.error('No internet connection. Retrying in 1 minute...');
+                await sleep(60000);
+            }
+        } catch (error) {
+            logger.error(`Bot crashed: ${error.message}`);
+            logger.info('Restarting in 1 minute...');
+            await sleep(60000);
+        }
+    }
+}
+
+// Start the bot
+logger.info('Initializing Cyrus Wraith AI Twitter Bot...');
+startBot().catch(error => {
+    logger.error(`Fatal error: ${error.message}`);
+    process.exit(1);
+});

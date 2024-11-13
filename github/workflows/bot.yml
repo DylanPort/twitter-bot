@@ -1,0 +1,27 @@
+name: Run Twitter Bot
+on:
+  schedule:
+    - cron: '*/30 * * * *'  # Runs every 30 minutes
+  workflow_dispatch:  # Allows manual triggering
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v2
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v2
+      with:
+        node-version: '18'
+        
+    - name: Install dependencies
+      run: npm install
+        
+    - name: Run bot
+      env:
+        TWITTER_EMAIL: ${{ secrets.gofokek187@inikale.com }}
+        TWITTER_PASSWORD: ${{ secrets.aranciata1234 }}
+        TWITTER_USERNAME: ${{ secrets.trenchwizardai }}
+      run: node index.js
