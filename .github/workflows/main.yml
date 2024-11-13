@@ -18,7 +18,9 @@ jobs:
           node-version: '18'
 
       - name: Install dependencies
-        run: npm install
+        run: |
+          npm install
+          npx puppeteer browsers install chrome
 
       - name: Run bot
         run: node index.js
@@ -26,3 +28,4 @@ jobs:
           TWITTER_EMAIL: "gofokek187@inikale.com"
           TWITTER_PASSWORD: "aranciata1234"
           TWITTER_USERNAME: "trenchwizardai"
+          PUPPETEER_EXECUTABLE_PATH: $(which google-chrome)

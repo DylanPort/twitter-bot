@@ -235,15 +235,20 @@ async function main() {
     logger.info('Starting Cyrus Wraith AI Twitter bot...');
     
     const browser = await puppeteer.launch({
-        headless: true,
-        defaultViewport: null,
-        args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--window-size=1280,800',
-            '--disable-notifications'
-        ]
-    });
+    headless: "new",
+    args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+        '--no-first-run',
+        '--no-zygote',
+        '--deterministic-fetch',
+        '--disable-features=IsolateOrigins',
+        '--disable-site-isolation-trials'
+    ],
+    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH
+});
     
     const page = await browser.newPage();
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
@@ -254,21 +259,17 @@ async function main() {
             throw new Error('Login failed');
         }
 
-        while (true) {
-            let tweet = await generateTweet();
-            if (tweet) {
-                await postTweet(page, tweet);
-            }
-
-            await sleep(getRandomDelay(POST_INTERVAL, POST_VARIANCE));
-            
-            saveState(cyrusState);
+        // Generate and post a single tweet
+        let tweet = await generateTweet();
+        if (tweet) {
+            await postTweet(page, tweet);
         }
 
     } catch (error) {
         logger.error(`Main loop error: ${error.message}`);
     } finally {
         await browser.close();
+        process.exit(0);  // Ensure the process exits
     }
 }
 
