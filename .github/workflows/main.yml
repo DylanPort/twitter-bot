@@ -1,0 +1,38 @@
+name: Twitter Bot
+
+on:
+  push:
+    branches: [ main ]
+  schedule:
+    - cron: '*/3 * * * *'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Use Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+
+    - name: Install Dependencies
+      run: |
+        npm install
+        
+    - name: Install Chromium dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y chromium-browser
+
+    - name: Run Bot
+      env:
+        TWITTER_EMAIL: ${{ secrets.gofokek187@inikale.com }}
+        TWITTER_PASSWORD: ${{ secrets.aranciata1234 }}
+        TWITTER_USERNAME: ${{ secrets.trenchwizardai }}
+        PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: 'true'
+        PUPPETEER_EXECUTABLE_PATH: '/usr/bin/chromium-browser'
+      run: node index.js
