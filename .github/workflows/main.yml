@@ -1,40 +1,28 @@
 name: Twitter Bot
 
 on:
-  push:
-    branches: [ main ]
+  workflow_dispatch:
   schedule:
     - cron: '*/3 * * * *'
-  workflow_dispatch:
 
 jobs:
   bot:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
 
     steps:
-    - uses: actions/checkout@v3
-    
-    - name: Use Node.js
-      uses: actions/setup-node@v3
-      with:
-        node-version: '18'
-        cache: 'npm'
-        
-    - name: Install Dependencies
-      run: |
-        npm install
-        
-    - name: Setup Chrome
-      uses: browser-actions/setup-chrome@v1
-      
-    - name: Run Bot with Display
-      env:
-        TWITTER_EMAIL: gofokek187@inikale.com
-        TWITTER_PASSWORD: aranciata1234
-        TWITTER_USERNAME: trenchwizardai
-        DISPLAY: ':99'
-      run: |
-        sudo apt-get install -y xvfb
-        Xvfb :99 &
-        node index.js
+      - uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run bot
+        run: node index.js
+        env:
+          TWITTER_EMAIL: "gofokek187@inikale.com"
+          TWITTER_PASSWORD: "aranciata1234"
+          TWITTER_USERNAME: "trenchwizardai"
