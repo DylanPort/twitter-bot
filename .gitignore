@@ -1,33 +1,5 @@
-# Dependencies
 node_modules/
-npm-debug.log
-yarn-debug.log
-yarn-error.log
-
-# Environment variables
 .env
-
-# Logs
-logs
 *.log
-combined.log
-error.log
-
-# Runtime data
-pids
-*.pid
-*.seed
-*.pid.lock
-
-# Bot state
 state.json
-
-# IDE specific files
-.idea/
-.vscode/
-*.swp
-*.swo
-
-# OS specific files
-.DS_Store
-Thumbs.db
+package-lock.json
