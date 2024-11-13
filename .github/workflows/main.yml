@@ -17,13 +17,12 @@ jobs:
         with:
           node-version: '18'
 
-      - name: Install Chrome
-        run: |
-          wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
-          sudo sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list'
-          sudo apt-get update
-          sudo apt-get install -y google-chrome-stable
-          
+      - name: Setup Chrome
+        uses: browser-actions/setup-chrome@v1
+        with:
+          chrome-version: stable
+        id: setup-chrome
+
       - name: Install dependencies
         run: |
           npm install
@@ -34,10 +33,7 @@ jobs:
           TWITTER_EMAIL: "gofokek187@inikale.com"
           TWITTER_PASSWORD: "aranciata1234"
           TWITTER_USERNAME: "trenchwizardai"
-          PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: "true"
-          PUPPETEER_EXECUTABLE_PATH: "/usr/bin/google-chrome"
+          CHROME_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}
         run: |
-          sudo apt-get install -y xvfb
-          Xvfb :99 &
-          export DISPLAY=:99
+          echo "Chrome path: $CHROME_PATH"
           node index.js
